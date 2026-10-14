@@ -10,7 +10,7 @@ logging.basicConfig(
 )
 
 # Replace with your actual Bot Token from @BotFather
-TOKEN = "YOUR_BOT_TOKEN_HERE"
+TOKEN = "8939699354:AAGRy7r9nXMBzObdXTJzCtLcCtyfs-_KkB0"
 FILE_NAME = "approved_users.json"
 
 def save_user_locally(user_id, username, first_name):
