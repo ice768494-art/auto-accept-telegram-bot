@@ -6,7 +6,7 @@ from flask import Flask
 from telegram import Update
 from telegram.ext import ApplicationBuilder, ChatJoinRequestHandler, ContextTypes
 
-# --- FLASK SERVER FOR RENDER ---
+
 web_app = Flask(__name__)
 
 @web_app.route('/')
@@ -22,7 +22,7 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
 )
 
-# Fetch token securely from Environment Variables
+
 TOKEN = os.environ.get("BOT_TOKEN")
 
 if not TOKEN:
