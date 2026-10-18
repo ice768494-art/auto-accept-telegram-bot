@@ -19,11 +19,11 @@ web_app = Flask(name)
 
 @web_app.route("/")
 def home():
-return "Bot is active!", 200
+ return "Bot is active!", 200
 
 def run_web_server():
-port = int(os.environ.get("PORT", 8080))
-web_app.run(host="0.0.0.0", port=port)
+ port = int(os.environ.get("PORT", 8080))
+ web_app.run(host="0.0.0.0", port=port)
 
 #================= CONFIGURATION =================
 
