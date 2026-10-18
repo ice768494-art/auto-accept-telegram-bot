@@ -2,45 +2,50 @@ import os
 import json
 import logging
 import threading
-import asyncio
 
 from flask import Flask
 from telegram import Update
 from telegram.ext import (
 ApplicationBuilder,
-ChatJoinRequestHandler,
 CommandHandler,
+ChatJoinRequestHandler,
 ContextTypes,
 )
 
-#================= WEB SERVER =================
+#==================== CONFIGURATION ====================
 
-web_app = Flask(name)
+TOKEN = os.getenv("BOT_TOKEN")
+ADMIN_ID = os.getenv("ADMIN_ID", "")
 
-@web_app.route("/")
-def home():
- return "Bot is active!", 200
+if not TOKEN:
+raise RuntimeError(
+"BOT_TOKEN is missing! Add it to Render Environment Variables."
+)
 
-def run_web_server():
- port = int(os.environ.get("PORT", 8080))
- web_app.run(host="0.0.0.0", port=port)
+FILE_NAME = "approved_users.json"
 
-#================= CONFIGURATION =================
+#==================== LOGGING ====================
 
 logging.basicConfig(
 format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 level=logging.INFO,
 )
 
-TOKEN = os.environ.get("BOT_TOKEN")
-ADMIN_ID = os.environ.get("ADMIN_ID")
+logger = logging.getLogger(name)
 
-if not TOKEN:
-raise ValueError("BOT_TOKEN is missing from environment variables!")
+#==================== WEB SERVER ====================
 
-FILE_NAME = "approved_users.json"
+web_app = Flask(name)
 
-#================= LOCAL STORAGE =================
+@web_app.route("/")
+def home():
+return "Auto Acceptor Bot is running!", 200
+
+def run_web_server():
+port = int(os.getenv("PORT", "8080"))
+web_app.run(host="0.0.0.0", port=port)
+
+#==================== LOCAL JSON STORAGE ====================
 
 def load_users():
 if not os.path.exists(FILE_NAME):
@@ -48,65 +53,101 @@ return []
 
 try:
     with open(FILE_NAME, "r", encoding="utf-8") as file:
-        return json.load(file)
-except (json.JSONDecodeError, OSError):
+        data = json.load(file)
+
+    return data if isinstance(data, list) else []
+
+except (OSError, json.JSONDecodeError):
+    logger.exception("Failed to load approved users.")
     return []
 
-def save_user_locally(user_id, username, first_name):
+def save_user(user):
 users = load_users()
 
-if not any(user.get("user_id") == user_id for user in users):
-    users.append({
-        "user_id": user_id,
-        "username": username,
-        "first_name": first_name,
-    })
+if any(item.get("user_id") == user.id for item in users):
+    return
 
+users.append(
+    {
+        "user_id": user.id,
+        "username": user.username,
+        "first_name": user.first_name,
+    }
+)
+
+try:
     with open(FILE_NAME, "w", encoding="utf-8") as file:
         json.dump(users, file, indent=4)
 
-#================= ADMIN CHECK =================
+except OSError:
+    logger.exception("Failed to save approved user.")
 
-def is_admin(update: Update) -> bool:
-if not ADMIN_ID:
-return False
+#==================== ADMIN CHECK ====================
 
+def is_admin(update: Update):
 user = update.effective_user
-return user is not None and str(user.id) == ADMIN_ID
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-await update.effective_message.reply_text(
-"🤖 Auto Acceptor Bot is running!\n\n"
-"Commands:\n"
-"/start - Bot status\n"
-"/ping - Check uptime response\n"
-"/stats - Approval statistics\n"
-"/acceptall CHAT_ID - Process pending requests"
+return (
+    user is not None
+    and ADMIN_ID.isdigit()
+    and user.id == int(ADMIN_ID)
 )
 
-async def ping(update: Update, context: ContextTypes.DEFAULT_TYPE):
-await update.effective_message.reply_text("🏓 Pong! Bot is active.")
+#==================== START COMMAND ====================
 
-async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def start(
+update: Update,
+context: ContextTypes.DEFAULT_TYPE,
+):
+await update.effective_message.reply_text(
+"🤖 Auto Acceptor Bot is online!\n\n"
+"Available commands:\n"
+"/start - Bot status\n"
+"/ping - Check bot response\n"
+"/stats - Approval statistics\n\n"
+"New join requests are accepted automatically."
+)
+
+#==================== PING COMMAND ====================
+
+async def ping(
+update: Update,
+context: ContextTypes.DEFAULT_TYPE,
+):
+await update.effective_message.reply_text(
+"🏓 Pong! Bot is running."
+)
+
+#==================== STATS COMMAND ====================
+
+async def stats(
+update: Update,
+context: ContextTypes.DEFAULT_TYPE,
+):
 if not is_admin(update):
-await update.effective_message.reply_text("⛔ Admin only.")
+await update.effective_message.reply_text(
+"⛔ This command is for the bot admin only."
+)
 return
 
 users = load_users()
 
 await update.effective_message.reply_text(
-    f"📊 Local Approval Statistics\n\n"
-    f"Recorded approvals: {len(users)}\n"
-    f"Storage: {FILE_NAME}\n"
-    f"Database: Not required"
+    "📊 Approval Statistics\n\n"
+    f"Recorded approved users: {len(users)}\n"
+    "Database: Not required"
 )
 
-#================= NEW REQUEST HANDLER =================
+#==================== AUTO ACCEPT NEW REQUESTS ====================
 
-async def auto_accept(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def auto_accept(
+update: Update,
+context: ContextTypes.DEFAULT_TYPE,
+):
 request = update.chat_join_request
+
 if request is None:
-return
+    return
 
 user = request.from_user
 
@@ -116,67 +157,59 @@ try:
         user_id=user.id,
     )
 
-    save_user_locally(user.id, user.username, user.first_name)
+    save_user(user)
 
-    logging.info(
-        "Approved %s (%s) in chat %s",
+    logger.info(
+        "Approved user %s (ID: %s) in chat %s",
         user.first_name,
         user.id,
         request.chat.id,
     )
 
 except Exception:
-    logging.exception("Could not approve user %s", user.id)
-
-#================= PENDING REQUESTS =================
-
-async def accept_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
-if not is_admin(update):
-await update.effective_message.reply_text("⛔ Admin only.")
-return
-
-if not context.args:
-    await update.effective_message.reply_text(
-        "Usage:\n/acceptall CHAT_ID\n\n"
-        "Example:\n/acceptall -1001234567890"
+    logger.exception(
+        "Failed to approve user %s in chat %s",
+        user.id,
+        request.chat.id,
     )
-    return
 
-chat_id = context.args[0]
-
-try:
-    chat_id = int(chat_id)
-except ValueError:
-    await update.effective_message.reply_text(
-        "❌ Invalid chat ID. Please provide a numeric chat ID."
-    )
-    return
-
-await update.effective_message.reply_text(
-    "ℹ️ Telegram's Bot API does not provide a method to list "
-    "all pending join requests. This command cannot discover "
-    "or bulk-approve requests that the bot has not received."
-)
-
-#================= MAIN =================
+#==================== MAIN FUNCTION ====================
 
 def main():
-threading.Thread(target=run_web_server, daemon=True).start()
+# Start the Render web server.
+ threading.Thread(
+ target=run_web_server,
+ daemon=True,
+ ).start()
 
-application = ApplicationBuilder().token(TOKEN).build()
+# Create the Telegram bot application.
+application = (
+    ApplicationBuilder()
+    .token(TOKEN)
+    .build()
+)
 
+# Register bot commands.
 application.add_handler(CommandHandler("start", start))
 application.add_handler(CommandHandler("ping", ping))
 application.add_handler(CommandHandler("stats", stats))
-application.add_handler(CommandHandler("acceptall", accept_all))
 
-application.add_handler(ChatJoinRequestHandler(auto_accept))
-
-logging.info("Auto Acceptor Bot starting...")
-
-application.run_polling(
-    allowed_updates=["message", "chat_join_request"]
+# Register automatic join-request approval.
+application.add_handler(
+    ChatJoinRequestHandler(auto_accept)
 )
 
-if __name__ == "main":
+logger.info("Auto Acceptor Bot is starting...")
+
+# Start polling for Telegram updates.
+application.run_polling(
+    allowed_updates=[
+        "message",
+        "chat_join_request",
+    ]
+)
+
+#==================== PROGRAM ENTRY POINT ====================
+
+if name == "main":
 main()
