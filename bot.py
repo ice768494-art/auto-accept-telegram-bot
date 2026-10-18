@@ -211,5 +211,5 @@ application.run_polling(
 
 #==================== PROGRAM ENTRY POINT ====================
 
-if name == "main":
-main()
+if __name__ == "__main__":
+    main()
