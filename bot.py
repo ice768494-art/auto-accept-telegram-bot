@@ -13,7 +13,7 @@ CommandHandler,
 ContextTypes,
 )
 
-================= WEB SERVER =================
+#================= WEB SERVER =================
 
 web_app = Flask(name)
 
@@ -25,7 +25,7 @@ def run_web_server():
 port = int(os.environ.get("PORT", 8080))
 web_app.run(host="0.0.0.0", port=port)
 
-================= CONFIGURATION =================
+#================= CONFIGURATION =================
 
 logging.basicConfig(
 format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -40,7 +40,7 @@ raise ValueError("BOT_TOKEN is missing from environment variables!")
 
 FILE_NAME = "approved_users.json"
 
-================= LOCAL STORAGE =================
+#================= LOCAL STORAGE =================
 
 def load_users():
 if not os.path.exists(FILE_NAME):
@@ -65,7 +65,7 @@ if not any(user.get("user_id") == user_id for user in users):
     with open(FILE_NAME, "w", encoding="utf-8") as file:
         json.dump(users, file, indent=4)
 
-================= ADMIN CHECK =================
+#================= ADMIN CHECK =================
 
 def is_admin(update: Update) -> bool:
 if not ADMIN_ID:
@@ -101,7 +101,7 @@ await update.effective_message.reply_text(
     f"Database: Not required"
 )
 
-================= NEW REQUEST HANDLER =================
+#================= NEW REQUEST HANDLER =================
 
 async def auto_accept(update: Update, context: ContextTypes.DEFAULT_TYPE):
 request = update.chat_join_request
@@ -128,7 +128,7 @@ try:
 except Exception:
     logging.exception("Could not approve user %s", user.id)
 
-================= PENDING REQUESTS =================
+#================= PENDING REQUESTS =================
 
 async def accept_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
 if not is_admin(update):
@@ -158,7 +158,7 @@ await update.effective_message.reply_text(
     "or bulk-approve requests that the bot has not received."
 )
 
-================= MAIN =================
+#================= MAIN =================
 
 def main():
 threading.Thread(target=run_web_server, daemon=True).start()
